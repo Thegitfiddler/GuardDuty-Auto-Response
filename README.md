@@ -112,7 +112,7 @@ GuardDuty includes a built-in sample findings generator.
 | Step | Screenshot |
 |---|---|
 | GuardDuty enabled | ![GuardDuty](Screenshots/GuardDuty.png) |
-| Lambda function deployed | ![Lambda](Screenshots/Lambda.png) |
+| Lambda function deployed | ![Lambda](Screenshots/Lambda_Function.png) |
 | EventBridge rule configured | ![EventBridge](Screenshots/EventBridge.png) |
 | CloudWatch logs showing isolation | ![CloudWatch](Screenshots/CloudWatch.png) |
 | Security Hub finding posted | ![Security Hub](Screenshots/SecurityHub.png) |
