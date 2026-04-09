@@ -107,26 +107,45 @@ GuardDuty includes a built-in sample findings generator.
 
 ---
 
+## Proof of Work
+
+The screenshots below document the full pipeline running in a live 
+AWS environment. Sample findings were generated using GuardDuty's 
+built-in testing tool to simulate a real HIGH severity threat. 
+All sensitive values including AWS account IDs and instance IDs 
+have been redacted.
+
+---
+
 ## Screenshots
 
 | Step | Screenshot |
 |---|---|
-| GuardDuty enabled | ![GuardDuty](Screenshots/GuardDuty.png) |
-| Lambda function deployed | ![Lambda](Screenshots/Lambda_Function.png) |
-| EventBridge rule configured | ![EventBridge](Screenshots/EventBridge.png) |
-| CloudWatch logs showing isolation | ![CloudWatch](Screenshots/CloudWatch.png) |
-| Security Hub finding posted | ![Security Hub](Screenshots/SecurityHub.png) |
-| IAM least privilege policy | ![IAM](Screenshots/IAM.png) |
+| GuardDuty enabled | ![GuardDuty](Screenshots/GuardDuty.png) | GuardDuty enabled and actively monitoring the AWS account for threats 24/7 |
+| Lambda function deployed | ![Lambda](Screenshots/Lambda_Function.png) | Lambda function deployed with Python 3.12 — contains the full automated response logic |
+| EventBridge rule configured | ![EventBridge](Screenshots/EventBridge.png) | EventBridge rule routing GuardDuty findings directly to the Lambda function |
+| CloudWatch logs showing isolation | ![CloudWatch](Screenshots/CloudWatch.png) | CloudWatch logs confirming Lambda executed and isolated the compromised instance |
+| Security Hub finding posted | ![Security Hub](Screenshots/SecurityHub.png) | Security Hub finding posted automatically by Lambda after incident response completed |
+| IAM least privilege policy | ![IAM](Screenshots/IAM.png) | Custom least privilege IAM policy — Lambda granted only 7 specific permissions |
 
 ---
 
 ## What I Learned
 
-- How AWS-native security services connect to form a detection pipeline
-- Event-driven architecture using EventBridge and Lambda
-- IAM least privilege design and why it matters
-- Automated incident response patterns used in real SOC environments
-- How to isolate compromised cloud resources programmatically
+Building this project deepened my understanding of how detection and 
+response pipelines operate at the infrastructure level. Designing the 
+EventBridge-to-Lambda trigger flow reinforced how event-driven 
+architecture reduces response time compared to traditional polling 
+methods.
+
+The IAM least privilege implementation was a deliberate design 
+decision — replacing broad managed policies with 7 scoped permissions 
+reflects how production security teams minimize blast radius in the 
+event of a compromised role.
+
+Working across GuardDuty, Lambda, Security Hub, and CloudWatch also 
+reinforced how native AWS services can be chained together to build 
+a detection and response capability without third-party tooling.
 
 ---
 
