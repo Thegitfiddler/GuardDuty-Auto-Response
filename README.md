@@ -132,6 +132,5 @@ GuardDuty includes a built-in sample findings generator.
 
 ## Author
 
-**[Your Name]**  
+** Michael Jones **  
 Aspiring Security/Detection Engineer  
-[LinkedIn URL] | [GitHub URL]
