@@ -2,7 +2,7 @@
 
 An automated cloud security pipeline built on AWS that detects 
 threats and isolates compromised resources within seconds — 
-without any manual intervention.
+with automated and human-approved response actions based on severity.
 
 ---
 
@@ -11,13 +11,21 @@ without any manual intervention.
 This project simulates a real-world Security Operations Center (SOC) 
 automated response workflow using native AWS security services.
 
-When Amazon GuardDuty detects a HIGH severity threat, this pipeline
-automatically:
-1. Identifies the affected EC2 instance
-2. Creates a quarantine security group (no inbound/outbound traffic)
-3. Attaches it to the compromised instance, cutting off all access
-4. Logs the full incident to CloudWatch
-5. Posts a structured finding to AWS Security Hub
+When Amazon GuardDuty detects a threat, this pipeline performs actions based on severity:
+
+LOW:
+- Sends notification only
+
+MEDIUM:
+- Tags affected EC2 instance for investigation
+- Sends alert notification
+
+HIGH / CRITICAL:
+- Sends approval request via SNS
+- Requires human-in-the-loop approval before containment
+- Upon approval, isolates the EC2 instance using a quarantine security group
+
+Response time: near real-time detection with controlled remediation for high-risk actions.
 
 **Response time: under 10 seconds from detection to isolation.**
 
@@ -27,12 +35,32 @@ automatically:
 
 GuardDuty (detects threat)
 ↓
+Security Hub (aggregates findings)
+↓
 EventBridge (routes finding)
 ↓
-Lambda (executes response)
-↓           ↓           ↓
-Isolate EC2   CloudWatch   Security Hub
-(quarantine)   (logs)      (findings)
+Lambda (decision engine)
+↓
+SNS (notification / approval)
+↓
+(API Gateway - approval link)
+↓
+Lambda (quarantine execution)
+↓
+EC2 (isolated)
+
+---
+
+## Human-in-the-Loop Approval
+
+High severity findings require explicit approval before remediation.
+
+An SNS notification is sent containing a one-click API Gateway link. 
+When clicked, the request triggers a Lambda function that performs 
+instance quarantine.
+
+This prevents accidental disruption of production workloads while 
+maintaining rapid response capability.
 
 ---
 
@@ -47,6 +75,8 @@ Isolate EC2   CloudWatch   Security Hub
 | AWS Security Hub | Centralized security findings dashboard |
 | Amazon CloudWatch | Execution logs and audit trail |
 | AWS IAM | Least privilege access control |
+| Amazon SNS | Sends alerts and apprroval notifications |
+| Amazon API Gateway | Provides secure approval endpoint |
 
 ---
 
@@ -127,6 +157,23 @@ have been redacted.
 | CloudWatch logs showing isolation | ![CloudWatch](Screenshots/CloudWatch.png) | CloudWatch logs confirming Lambda executed and isolated the compromised instance |
 | Security Hub finding posted | ![Security Hub](Screenshots/SecurityHub.png) | Security Hub finding posted automatically by Lambda after incident response completed |
 | IAM least privilege policy | ![IAM](Screenshots/IAM.png) | Custom least privilege IAM policy — Lambda granted only 7 specific permissions |
+| SNS approval email | ![SNS](Screenshots/SNS.png) | SNS email containing approval link for quarantine |
+| API Gateway endpoint | ![API](Screenshots/API.png) | API Gateway endpoint used for human approval |
+| EC2 before quarantine | ![Before](Screenshots/Before.png) | Instance with normal security group |
+| EC2 after quarantine | ![After](Screenshots/After.png) | Instance isolated with quarantine security group |
+
+---
+
+## Risk-Based Response Design
+
+This project implements a tiered response model:
+
+- Low risk → visibility only
+- Medium risk → automated tagging
+- High risk → controlled remediation with human approval
+
+This design balances automation speed with operational safety, 
+mirroring real-world security engineering practices.
 
 ---
 
@@ -147,6 +194,19 @@ Working across GuardDuty, Lambda, Security Hub, and CloudWatch also
 reinforced how native AWS services can be chained together to build 
 a detection and response capability without third-party tooling.
 
+Introducing a human-in-the-loop approval mechanism significantly 
+improved the design by preventing unintended disruption to critical 
+resources. This reflects real-world incident response strategies 
+where automation is balanced with control for high-impact actions.
+
+---
+
+## Future Improvements
+
+- Secure API Gateway using IAM or signed requests
+- Integrate AWS CloudTrail for audit visibility
+- Forward logs to SIEM platforms (e.g., Splunk)
+- Add rollback capability to restore original security groups
 ---
 
 ## Author
