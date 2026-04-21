@@ -1,148 +1,120 @@
 import boto3
 import json
 import logging
-import datetime
 
-# This sets up a logger so we can see what's happening in CloudWatch
 logger = logging.getLogger()
 logger.setLevel(logging.INFO)
 
-# -------------------------------------------------------
-# ENTRY POINT — Lambda starts here every time it's triggered
-# -------------------------------------------------------
+sns = boto3.client("sns")
+ec2 = boto3.client("ec2")
+
+SNS_TOPIC_ARN = "arn:aws:sns:us-east-1:471112670973:SecurityAlerts"
+
+API_URL = 'https://nntw4y1ri7.execute-api.us-east-1.amazonaws.com/prod/quarantine'
+
 def lambda_handler(event, context):
-    logger.info("GuardDuty finding received.")
-    logger.info(json.dumps(event))  # Log the full event for learning purposes
+    logger.info("Security Hub event received")
+    logger.info(json.dumps(event))
 
-    # Step 1: Read the finding details
-    detail      = event.get("detail", {})
-    finding_id  = detail.get("id", "unknown")
-    severity    = detail.get("severity", 0)
-    description = detail.get("description", "No description provided")
+    findings = event.get("detail", {}).get("findings", [])
 
-    logger.info(f"Finding ID: {finding_id} | Severity: {severity}")
+    # Safety check
+    if not findings:
+        logger.info("No findings found in event")
+        return {"statusCode": 200}
 
-    # Step 2: Only act on HIGH severity (7.0 or above)
-    if severity >= 7.0:
-        logger.info("HIGH severity detected — starting incident response.")
+    for finding in findings:
+        severity = finding["Severity"]["Label"].upper()
+        logger.info(f"DEBUG → Severity Label: {severity}")
 
-        # Step 3: Find which EC2 instance is affected
-        instance_id = get_instance_id(detail)
+        resources = finding.get("Resources", [])
 
-        # Step 4: Isolate it if we found one
-        if instance_id:
-            isolate_ec2_instance(instance_id)
+        instance_id = None
+        for r in resources:
+            if r.get("Type") == "AwsEc2Instance":
+                instance_id = r.get("Id").split("/")[-1]
+
+        logger.info(f"Instance ID: {instance_id}")
+
+        # -----------------------------
+        # LOW → Notify Only
+        # -----------------------------
+        if severity in ["LOW", "INFORMATIONAL"]:
+            send_sns("LOW finding detected", instance_id, severity)
+
+        # -----------------------------
+        # MEDIUM → Tag + Notify
+        # -----------------------------
+        elif severity == "MEDIUM":
+            if instance_id:
+                tag_instance(instance_id)
+            send_sns("MEDIUM finding - resource tagged", instance_id, severity)
+
+        # -----------------------------
+        # HIGH / CRITICAL → Approval Required
+        # -----------------------------
+        elif severity in ["HIGH", "CRITICAL"]:
+            send_approval(instance_id, severity)
+
         else:
-            logger.info("No EC2 instance found in this finding. Skipping isolation.")
+            logger.info(f"Unhandled severity: {severity}")
 
-        # Step 5: Log the incident everywhere
-        send_alert(finding_id, severity, description, instance_id)
-
-    else:
-        logger.info(f"Severity {severity} is below threshold. No action taken.")
-
-    return {"statusCode": 200, "body": "Done"}
+    return {"statusCode": 200}
 
 
-# -------------------------------------------------------
-# FUNCTION 1 — Dig into the finding to get the instance ID
-# -------------------------------------------------------
-def get_instance_id(detail):
+# -----------------------------
+# Tagging Function
+# -----------------------------
+def tag_instance(instance_id):
     try:
-        instance_id = (
-            detail
-            .get("resource", {})
-            .get("instanceDetails", {})
-            .get("instanceId")
+        ec2.create_tags(
+            Resources=[instance_id],
+            Tags=[{"Key": "SecurityStatus", "Value": "UnderInvestigation"}]
         )
-        if instance_id:
-            logger.info(f"Affected instance found: {instance_id}")
-        return instance_id
+        logger.info(f"Tagged instance {instance_id}")
     except Exception as e:
-        logger.error(f"Error getting instance ID: {e}")
-        return None
+        logger.error(f"Tagging failed: {e}")
 
 
-# -------------------------------------------------------
-# FUNCTION 2 — Isolate the compromised EC2 instance
-# -------------------------------------------------------
-def isolate_ec2_instance(instance_id):
-    ec2 = boto3.client("ec2")
-
+# -----------------------------
+# SNS Notification
+# -----------------------------
+def send_sns(message, instance_id, severity):
     try:
-        # Find the VPC this instance lives in
-        response = ec2.describe_instances(InstanceIds=[instance_id])
-        vpc_id   = response["Reservations"][0]["Instances"][0]["VpcId"]
-        logger.info(f"Instance lives in VPC: {vpc_id}")
-
-        # Create a quarantine security group (empty = no traffic allowed)
-        sg_response = ec2.create_security_group(
-            GroupName   = f"QUARANTINE-{instance_id}",
-            Description = "Auto-quarantine: blocks all traffic to/from this instance",
-            VpcId       = vpc_id
+        sns.publish(
+            TopicArn=SNS_TOPIC_ARN,
+            Subject=f"Security Alert: {severity}",
+            Message=f"{message}\nInstance: {instance_id}\nSeverity: {severity}"
         )
-        quarantine_sg_id = sg_response["GroupId"]
-        logger.info(f"Quarantine security group created: {quarantine_sg_id}")
+        logger.info("SNS notification sent")
+    except Exception as e:
+        logger.error(f"SNS failed: {e}")
 
-        # Remove the default outbound rule (deny all outbound too)
-        ec2.revoke_security_group_egress(
-            GroupId       = quarantine_sg_id,
-            IpPermissions = [{
-                "IpProtocol" : "-1",
-                "IpRanges"   : [{"CidrIp": "0.0.0.0/0"}]
-            }]
+
+# -----------------------------
+# Approval Notification (HIGH)
+# -----------------------------
+def send_approval(instance_id, severity):
+    try:
+        approval_link = f"{API_URL}?instance_id={instance_id}"
+
+        message = f"""
+HIGH severity finding detected.
+
+Instance: {instance_id}
+Severity: {severity}
+
+Click below to approve quarantine:
+{approval_link}
+"""
+
+        sns.publish(
+            TopicArn=SNS_TOPIC_ARN,
+            Subject="APPROVAL REQUIRED: Quarantine Instance",
+            Message=message
         )
 
-        # Attach the quarantine group to the instance (replaces existing SGs)
-        ec2.modify_instance_attribute(
-            InstanceId = instance_id,
-            Groups     = [quarantine_sg_id]
-        )
-        logger.info(f"SUCCESS: Instance {instance_id} has been isolated.")
+        logger.info("Approval notification sent")
 
     except Exception as e:
-        logger.error(f"Failed to isolate instance {instance_id}: {e}")
-
-
-# -------------------------------------------------------
-# FUNCTION 3 — Send alerts to CloudWatch and Security Hub
-# -------------------------------------------------------
-def send_alert(finding_id, severity, description, instance_id):
-
-    # CloudWatch gets the log automatically — this just makes it obvious
-    logger.warning(
-        f"INCIDENT RESPONSE COMPLETE | "
-        f"Finding: {finding_id} | "
-        f"Severity: {severity} | "
-        f"Instance Isolated: {instance_id} | "
-        f"Details: {description}"
-    )
-
-    # Post a custom finding to Security Hub
-    hub      = boto3.client("securityhub")
-    sts      = boto3.client("sts")
-    account  = sts.get_caller_identity()["Account"]
-    now      = datetime.datetime.utcnow().isoformat() + "Z"
-
-    try:
-        hub.batch_import_findings(Findings=[{
-            "SchemaVersion" : "2018-10-08",
-            "Id"            : f"auto-response-{finding_id}",
-            "ProductArn"    : f"arn:aws:securityhub:us-east-1:{account}:product/{account}/default",
-            "GeneratorId"   : "lambda-auto-response",
-            "AwsAccountId"  : account,
-            "CreatedAt"     : now,
-            "UpdatedAt"     : now,
-            "Title"         : "Automated Incident Response Executed",
-            "Description"   : f"Lambda isolated instance {instance_id} in response to GuardDuty finding {finding_id}.",
-            "Severity"      : {"Label": "HIGH"},
-            "Types"         : ["Software and Configuration Checks"],
-            "Resources"     : [{
-                "Type" : "AwsEc2Instance",
-                "Id"   : instance_id or "unknown"
-            }]
-        }])
-        logger.info("Security Hub alert posted successfully.")
-
-    except Exception as e:
-        logger.error(f"Could not post to Security Hub: {e}")
+        logger.error(f"Approval SNS failed: {e}")
