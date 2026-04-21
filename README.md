@@ -157,7 +157,7 @@ have been redacted.
 | CloudWatch logs showing isolation | ![CloudWatch](Screenshots/CloudWatch.png) | CloudWatch logs confirming Lambda executed and isolated the compromised instance |
 | Security Hub finding posted | ![Security Hub](Screenshots/SecurityHub.png) | Security Hub finding posted automatically by Lambda after incident response completed |
 | IAM least privilege policy | ![IAM](Screenshots/Updated_IAM.png) | Custom least privilege IAM policy — Lambda granted only 7 specific permissions |
-| SNS approval email | ![SNS](Screenshots/SN.png) | SNS email containing approval link for quarantine |
+| SNS approval email | ![SNS](Screenshots/SNS.png) | SNS email containing approval link for quarantine |
 | API Gateway endpoint | ![API](Screenshots/API.png) | API Gateway endpoint used for human approval |
 | EC2 before quarantine | ![Before](Screenshots/Before.png) | Instance with normal security group |
 | EC2 after quarantine | ![After](Screenshots/After.png) | Instance isolated with quarantine security group |
