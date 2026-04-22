@@ -177,6 +177,17 @@ mirroring real-world security engineering practices.
 
 ---
 
+## Terraform & CI/CD Enhancement
+
+This project was extended to use Terraform for full infrastructure automation and GitHub Actions for CI/CD deployment.
+
+Key improvements:
+- Infrastructure as Code (Terraform)
+- Automated deployment pipeline
+- Remote state management (S3 + DynamoDB)
+
+---
+
 ## What I Learned
 
 Building this project deepened my understanding of how detection and 
